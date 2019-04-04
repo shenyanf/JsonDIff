@@ -17,7 +17,6 @@ import com.shen.json.enums.DiffResultTypeEnum;
  * @date 2019年1月4日
  */
 public class RecursiveDiff {
-    // diff result
     private Map<String, String> diffRet;
 
     // 1st json format string
@@ -25,118 +24,33 @@ public class RecursiveDiff {
 
     // 2nd json format string
     private String json2;
-
-    // exclude key from diffRet
+    // 内部使用的屏蔽keys
+    private List<String> insideExcludeKeys;
+    // outside,暴露给外使用的
     private List<String> excludeKeys;
 
     public RecursiveDiff(String json1, String json2) {
         this.json1 = json1;
         this.json2 = json2;
         diffRet = new HashMap<String, String>();
-        setExcludeKeys(new ArrayList<String>());
+        this.insideExcludeKeys = new ArrayList<String>();
+        this.excludeKeys = new ArrayList<String>();
     }
 
     /**
-     * expose for outside call.
+     * 连接两个string，忽略为空的情况.<br/>
+     * contact two strings
      * 
-     * @return
+     * @param s1
+     * @param s2
+     * @return "",nav-aa-bb-cc
      */
-    public Boolean compareJson() {
-        return compareJson(json1, json2, "", "");
+    private String concat(String s1, String s2) {
+        return s1.length() == 0 ? (s2.length() == 0 ? "" : s2) : (s2.length() == 0 ? s1 : String.join("-", s1, s2));
     }
 
     /**
-     * 比对两个json格式的字符串
-     * 
-     * @param json1
-     * @param json2
-     * @param parentKeys
-     *            '-'分割
-     * @param key
-     * @return
-     */
-    public Boolean compareJson(String jsonStr1, String jsonStr2, String parentKeys, String key) {
-        // System.out.println("compareJson key:" + key + " \njson1:" + jsonStr1 + " \njson2:" + jsonStr2);
-
-        String diffKey = concat(parentKeys, key);
-
-        // 判断null
-        if (jsonStr1 == null && jsonStr2 == null) {
-            delKey(diffKey);
-            return Boolean.TRUE;
-        } else if (jsonStr1 == null && jsonStr2 != null) {
-            addDifference(diffKey, DiffResultTypeEnum.DELKEY);
-            return Boolean.FALSE;
-        } else if (jsonStr1 != null && jsonStr2 == null) {
-            addDifference(diffKey, DiffResultTypeEnum.ADDNEWKEY);
-            return Boolean.FALSE;
-        }
-        // String作为优先判断
-        if (jsonStr1.equals(jsonStr2)) {
-            List<String> keys = cascadeKeys(jsonStr1, diffKey);
-
-            keys.forEach(k -> delKey(k));
-            // 当前的diffKey也需要屏蔽掉
-            delKey(diffKey);
-
-            return Boolean.TRUE;
-        }
-
-        // 优先使用JSONObject格式对比
-        try {
-            Boolean flag = Boolean.FALSE;
-            Boolean finalFlag = Boolean.TRUE;
-            JSONObject jsonObject1 = JSON.parseObject(jsonStr1);
-            JSONObject jsonObject2 = JSON.parseObject(jsonStr2);
-            Set<String> json1keys = jsonObject1.keySet();
-            Set<String> json2keys = jsonObject2.keySet();
-            // 交集
-            // Set<String> intersectionKeys = json1keys.stream().collect(Collectors.toSet());
-            // intersectionKeys.retainAll(json2keys);
-
-            // 并集
-            Set<String> unionKeys = json1keys.stream().collect(Collectors.toSet());
-            unionKeys.addAll(json2keys);
-
-            // System.out.println("key:" + key + " unionKeys:" + unionKeys + " intersectionKeys:" + intersectionKeys);
-            if (unionKeys.size() > 0) {
-                for (String k : unionKeys) {
-                    // System.out.println(
-                    // "Before compareJson key:" + k + " \njson1:" + jsonObject1 + " \njson2:" + jsonObject2);
-                    flag = compareJson(jsonObject1.getString(k), jsonObject2.getString(k), diffKey, k);
-                    finalFlag = finalFlag && flag;
-                }
-            }
-
-            return finalFlag;
-        } catch (Exception e) {
-        }
-
-        // 次之使用JSONArray格式对比
-        try {
-            JSONArray jsonArray1 = JSON.parseArray(jsonStr1);
-            JSONArray jsonArray2 = JSON.parseArray(jsonStr2);
-
-            return compareJSONArray(jsonArray1, jsonArray2, parentKeys, key);
-        } catch (Exception e1) {
-        }
-
-        // 再次之使用Object格式对比
-        try {
-            Object obj1 = (Object) jsonStr1;
-            Object obj2 = (Object) jsonStr2;
-
-            return compareObject(obj1, obj2, parentKeys, key);
-        } catch (Exception e1) {
-            e1.printStackTrace();
-        }
-
-        return Boolean.TRUE;
-    }
-
-    /**
-     * 比较两个json对象。<br/>
-     * compare two json Object
+     * 比较两个json对象
      * 
      * @param jsonObj2
      * @param jsonObj1
@@ -180,8 +94,7 @@ public class RecursiveDiff {
     }
 
     /**
-     * 比较两个JSONArray元素,内容是否一致---忽略顺序<br/>
-     * compare two Json Array, don't care order
+     * 比较两个JSONArray元素个数,内容是否一致---忽略顺序
      * 
      * @param array1
      * @param array2
@@ -250,13 +163,20 @@ public class RecursiveDiff {
         // System.out.println("compareObject key:" + key + " \njson1:" + obj1 + " \njson2:" + obj2);
         String diffKey = concat(parentKeys, key);
 
-        if ((obj1 == null && obj2 == null) || obj1.equals(obj2)) {
+        if ((obj1 == null && obj2 == null) || (obj1 != null && obj1.equals(obj2))) {
             delKey(diffKey);
             return Boolean.TRUE;
         } else {
             addDifference(diffKey, DiffResultTypeEnum.DIFFERENCE);
             return Boolean.FALSE;
         }
+    }
+
+    /**
+     * expose for outside call.
+     */
+    public Boolean compareJson() {
+        return compareJson(json1, json2, "", "");
     }
 
     /**
@@ -268,7 +188,7 @@ public class RecursiveDiff {
         // System.out.println("==========del key:" + key + " ==============");
         try {
             diffRet.remove(key);
-            excludeKeys.add(key);
+            insideExcludeKeys.add(key);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -327,27 +247,119 @@ public class RecursiveDiff {
     }
 
     /**
-     * 连接两个string，忽略为空的情况.<br/>
-     * contact two strings
+     * 比对两个json格式的字符串
      * 
-     * @param s1
-     * @param s2
-     * @return "",nav-aa-bb-cc
+     * @param json1
+     * @param json2
+     * @param parentKeys
+     *            '-'分割
+     * @param key
+     * @return
      */
-    private String concat(String s1, String s2) {
-        return s1.length() == 0 ? (s2.length() == 0 ? "" : s2) : (s2.length() == 0 ? s1 : String.join("-", s1, s2));
+    public Boolean compareJson(String jsonStr1, String jsonStr2, String parentKeys, String key) {
+        // System.out.println("compareJson key:" + key + " \njson1:" + jsonStr1 + " \njson2:" + jsonStr2);
+
+        String diffKey = concat(parentKeys, key);
+
+        // 判断null
+        if (jsonStr1 == null && jsonStr2 == null) {
+            delKey(diffKey);
+            return Boolean.TRUE;
+        } else if (jsonStr1 == null && jsonStr2 != null) {
+            addDifference(diffKey, DiffResultTypeEnum.DELKEY);
+            return Boolean.FALSE;
+        } else if (jsonStr1 != null && jsonStr2 == null) {
+            addDifference(diffKey, DiffResultTypeEnum.ADDNEWKEY);
+            return Boolean.FALSE;
+        }
+        // String作为兜底
+        if (jsonStr1.equals(jsonStr2)) {
+            List<String> keys = cascadeKeys(jsonStr1, diffKey);
+
+            keys.forEach(k -> delKey(k));
+            // 当前的diffKey也需要屏蔽掉
+            delKey(diffKey);
+
+            return Boolean.TRUE;
+        }
+
+        // 优先使用JSONObject格式对比
+        try {
+            Boolean flag = Boolean.FALSE;
+            Boolean finalFlag = Boolean.TRUE;
+            JSONObject jsonObject1 = JSON.parseObject(jsonStr1);
+            JSONObject jsonObject2 = JSON.parseObject(jsonStr2);
+            Set<String> json1keys = jsonObject1.keySet();
+            Set<String> json2keys = jsonObject2.keySet();
+            // 交集
+            Set<String> intersectionKeys = json1keys.stream().collect(Collectors.toSet());
+            intersectionKeys.retainAll(json2keys);
+            // 并集
+            Set<String> unionKeys = json1keys.stream().collect(Collectors.toSet());
+            unionKeys.addAll(json2keys);
+
+            // System.out.println("key:" + key + " unionKeys:" + unionKeys + " intersectionKeys:" + intersectionKeys);
+            if (unionKeys.size() > 0) {
+                for (String k : unionKeys) {
+                    // System.out.println(
+                    // "Before compareJson key:" + k + " \njson1:" + jsonObject1 + " \njson2:" + jsonObject2);
+                    flag = compareJson(jsonObject1.getString(k), jsonObject2.getString(k), diffKey, k);
+                    finalFlag = finalFlag && flag;
+                }
+            }
+
+            return finalFlag;
+        } catch (Exception e) {
+        }
+
+        // 次之使用JSONArray格式对比
+        try {
+            JSONArray jsonArray1 = JSON.parseArray(jsonStr1);
+            JSONArray jsonArray2 = JSON.parseArray(jsonStr2);
+
+            return compareJSONArray(jsonArray1, jsonArray2, parentKeys, key);
+        } catch (Exception e1) {
+        }
+
+        // 再次之使用Object格式对比
+        try {
+            Object obj1 = (Object) jsonStr1;
+            Object obj2 = (Object) jsonStr2;
+
+            return compareObject(obj1, obj2, parentKeys, key);
+        } catch (Exception e1) {
+            e1.printStackTrace();
+        }
+
+        return Boolean.TRUE;
     }
 
     public Map<String, String> getDiffRet() {
-        Iterator<Entry<String, String>> iterator = diffRet.entrySet().iterator();
+        // System.out.println("excluedKeys:" + insideExcludeKeys);
+        // System.out.println("diffRet:" + diffRet);
 
-        // delete excludeKeys contains keys
-        while (iterator.hasNext()) {
-            String key = iterator.next().getKey();
-            if (excludeKeys.contains(key)) {
-                iterator.remove();
+        Iterator<Entry<String, String>> iterator1 = diffRet.entrySet().iterator();
+        while (iterator1.hasNext()) {
+            String key = iterator1.next().getKey();
+
+            // 去掉在insideExcludeKeys中出现的diffRet的keys
+            if (insideExcludeKeys.contains(key)) {
+                iterator1.remove();
             }
         }
+
+        Iterator<Entry<String, String>> iterator2 = diffRet.entrySet().iterator();
+        while (iterator2.hasNext()) {
+            String key = iterator2.next().getKey();
+
+            // 去掉在diffRet的keys中出现的excludeKeys
+            for (String outStr : excludeKeys) {
+                if (key.contains(outStr)) {
+                    iterator2.remove();
+                }
+            }
+        }
+        // System.out.println("diffRet:" + diffRet);
         return diffRet;
     }
 
@@ -359,8 +371,13 @@ public class RecursiveDiff {
         return excludeKeys;
     }
 
+    /**
+     * 建议填写完整key链路，例如：data-a-b-c-d、data-respData-nav-text
+     * 
+     * @param excludeKeys
+     */
     public void setExcludeKeys(List<String> excludeKeys) {
-        this.excludeKeys = excludeKeys;
+        this.excludeKeys.addAll(excludeKeys);
     }
 
     public String getJson1() {
@@ -382,13 +399,23 @@ public class RecursiveDiff {
     public static void main(String[] args) {
         // String json1 = "{\"nav\":[{},{\"aa\":[1,2,3]},{\"text\":\"小灰灰\"},{\"bb\":\"haha\"}]}";
         // String json2 = "{\"nav\":[{\"cc\":2},{\"aa\":[1,2,3]},{\"text\":\"大灰灰\"},{}]}";
-        String json1 = "{\"respCode\":[1,2,3],\"errMsg\":\"\",\"respData\":{\"nav\":[{\"aa\":[1,2,3]},{},{\"text\":\"大灰机\",\"href\":\"//mbiubiubiu\"}]}}";
-        String json2 = "{\"aaaa\":1,\"respData\":{\"nav\":[{\"aa\":[2,1,3,4]},{},{\"text\":\"大灰机2\",\"href\":\"//mbiubiubiu\"}]},\"errMsg\":\"\",}";
+        String json1 = "{\"data\":{\"respCode\":[1,2,3],\"errMsg\":\"\",\"respData\":{\"nav\":[{\"aa\":[1,2,3]},{},{\"text\":\"大灰机\",\"href\":\"//mbiubiubiu\"}]}}}";
+        String json2 = "{\"data\":{\"aaaa\":1,\"respData\":{\"nav\":[{\"aa\":[2,1,3,4]},{},{\"text\":\"大灰机2\",\"href\":\"//mbiubiubiu\"}]},\"errMsg\":\"\",}}";
 
         RecursiveDiff diffUtil = new RecursiveDiff(json1, json2);
+        diffUtil.setExcludeKeys(new ArrayList<String>() {
+            /**
+             * 
+             */
+            private static final long serialVersionUID = 1L;
+
+            {
+                add("aaaa");
+                add("data-respData-nav-text");
+            }
+        });
         diffUtil.compareJson();
-        // result: {respData-nav-aa=length is not equal, respData-nav-text=json1 not equals json2, aaaa=json1 del key,
-        // respCode=json1 add new key}
-        System.out.println("result: " + diffUtil.getDiffRet());
+
+        System.out.println(diffUtil.getDiffRet());
     }
 }
